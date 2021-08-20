@@ -1,0 +1,146 @@
+---
+title: "Classification: Logistic Regression, OR and RR"
+author: "Silvia Salini"
+date: "5/3/2021"
+output: html_document
+---
+
+# Data
+The dataset **baby_weight.sav** contains the risk factors associated with the birth of an underweight child.
+
+- underweight: "Underweight baby"
+- age: "Age of the mother"
+- weight: "Weight of the mother at the last period"
+- etnicity: "Ethnicity"
+- smoke: "Smoker during pregnancy"
+- hypertension: "History of hypertension"
+- uterus: "Irritation of the uterus"
+
+```{r}
+library(foreign)
+dat<-read.spss("baby_weight.sav", to.data.frame = TRUE, use.value.labels = FALSE)
+library(dplyr)
+glimpse(dat)
+```
+
+
+# Outline
+1. Estimate a logistic regression model of UNDERWEIGHT baby with respect to WIGHT? Compute manually the likelihood function
+2. Build 2X2 contingency tables considering the UNDERWEIGHT variable and all the dichotomous variables present.
+3. Waht is the RELATIVE RISK and how it is calculated?
+3. What is the ODDS RATIO and how is it calculated?
+4. Calculate them for the table relating to UNDERWEIGHT and SMOKING.
+5. Proceed with a logistic regression model where the dependent variable is UNDERWEIGHT and the only explanatory variable is SMOKE. What is evident from the estimate of the parameter?
+
+
+# Logistic regression WEIGHT
+
+```{r, message=FALSE, warning=FALSE}
+lr_fit <- glm(underweight ~ weight, data = dat,
+          family=binomial(link='logit'))
+summary(lr_fit)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+logLik(lr_fit)
+(vcov = vcov(lr_fit))
+```
+
+# Plot the data and the model
+
+```{r}
+plot(dat$weight, dat$underweight, , xlab="Weight", ylab="Underweight")
+lines(dat$weight, lr_fit$fitted, type="l", col="red", lwd=3)
+```
+
+
+# direct computation of the likelihood function.
+Recall that the likelihood function is defined as :
+$l(\beta) = \prod_{i=1}^n \pi(x_i)^{y_i}\left(1 - \pi(x_i)\right)^{1- y_i}.$
+where
+$\pi(x_i) = \dfrac{e^{\beta_0 + \beta_1 x_i}}{1 + e^{\beta_0 + \beta_1 x_i}}$
+
+We can define a function in R to compute the likelihood. We will rename the variables to X and Y to simplify the expression (and to make it easier to apply the likelihood function to future examples):
+
+```{r}
+X = dat$weight
+Y = dat$underweight
+
+likelihood = function(b){
+  prod(exp(b[1] + b[2] * X[Y==1]) /(1 + exp(b[1] + b[2] * X[Y==1]))) * prod(1 /(1 + exp(b[1] + b[2] * X[Y==0])))  
+}
+```
+
+```{r}
+(b = lr_fit$coefficients)
+```
+
+
+```{r}
+likelihood(b)
+```
+
+
+```{r}
+log(likelihood(b))
+```
+
+
+```{r}
+optim(par = c(0, 0), fn = function(x) - log(likelihood(x)))
+```
+
+```{r}
+glm.probs=predict(lr_fit,dat,type="response") 
+glm.pred=ifelse(glm.probs >0.4,"1","0")
+table(glm.pred,dat$underweight)
+mean(glm.pred==dat$underweight)
+```
+
+
+# Are Underwight and Smoke associated?
+
+```{r}
+mytab <- xtabs(~underweight+smoke, data=dat)
+mytab
+plot(mytab, col=c("green","blue"))
+plot(t(mytab), col=c("green","blue"))
+prop.table(mytab, 1) # Row Percentages
+prop.table(mytab, 2) # Col Percentages
+Test <- chisq.test(mytab, correct=FALSE)
+Test
+```
+
+```{r}
+relative_risk=(30/75)/(29/114)
+relative_risk
+```
+
+```{r}
+odd_under_nonsmoke=29/85
+odd_under_smoke=30/45
+odd_under_smoke/odd_under_nonsmoke
+```
+
+```{r}
+library("epitools")
+riskratio.wald(table(dat$smoke,dat$underweight))
+oddsratio.wald(table(dat$smoke,dat$underweight))
+```
+
+# Logistic regression (SMOKE)
+
+```{r, message=FALSE, warning=FALSE}
+lr_fit <- glm(underweight ~ smoke, data = dat,
+          family=binomial(link='logit'))
+summary(lr_fit)
+```
+
+```{r}
+exp(cbind(OR = coef(lr_fit), confint(lr_fit)))
+```
+
+An odds ratio of 1.95 means that the odds that cases (baby undeweight) smoked was 1.95 times higher than the odds among controls (baby no underweight). Smoke might be a risk factor for baby underweight at birth.
+
+
