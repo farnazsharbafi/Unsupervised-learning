@@ -1,0 +1,296 @@
+---
+title: "Classification: Logistic Rrgression, trining, Test, ROC, Compare with LDA"
+author: "Silvia Salini"
+date: "5/3/2021"
+output: html_document
+---
+
+# Data
+The dataset **Telco-Customer-Churn.xlsx** contains the following information :
+
+Each row represents a customer, each column contains customer’s attributes described on the column Metadata.
+
+The data set includes information about:
+
+- Customers who left within the last month – the column is called Churn
+- Services that each customer has signed up for – phone, multiple lines, internet, online security, online backup, device protection, tech support, and streaming TV and movies
+- Customer account information – how long they’ve been a customer, contract, payment method, paperless billing, monthly charges, and total charges
+- Demographic info about customers – gender, age range, and if they have partners and dependents
+
+The IBM sample data set website gives the following data dicitionary, or description of the variables:
+
+- customerID: Customer ID
+- genderCustomer: gender (female, male)
+- SeniorCitizen: Whether the customer is a senior citizen or not (1, 0)
+- PartnerWhether: the customer has a partner or not (Yes, No)
+- Dependents: Whether the customer has dependents or not (Yes, No)
+- tenure: Number of months the customer has stayed with the company
+- PhoneService: Whether the customer has a phone service or not (Yes, No)
+- MultipleLines: Whether the customer has multiple lines or not (Yes, No, No phone service)
+- InternetService: Customer’s internet service provider (DSL, Fiber optic, No)
+- OnlineSecurity: Whether the customer has online security or not (Yes, No, No internet service)
+- OnlineBackup: Whether the customer has online backup or not (Yes, No, No internet service)
+- DeviceProtection: Whether the customer has device protection or not (Yes, No, No internet service)
+- TechSupport: Whether the customer has tech support or not (Yes, No, No internet service)
+- StreamingTV: Whether the customer has streaming TV or not (Yes, No, No internet service)
+- StreamingMovies: Whether the customer has streaming movies or not (Yes, No, No internet service)
+- Contract: The contract term of the customer (Month-to-month, One year, Two year)
+- PaperlessBilling: Whether the customer has paperless billing or not (Yes, No)
+- PaymentMethod: The customer’s payment method (Electronic check, Mailed check, Bank transfer (automatic), - Credit card ( automatic))
+- MonthlyCharges: The amount charged to the customer monthly
+- TotalCharges: The total amount charged to the customer
+- Churn: Whether the customer churned or not (Yes or No)
+
+```{r, message=FALSE, warning=FALSE}
+library(plyr)  
+library(caret)
+library(gridExtra) 
+library(tidyverse) 
+library(rsample)
+library(e1071) 
+library(GGally)
+library(data.table)
+library(DT)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(corrplot)
+library(rms)
+library(MASS)
+library(e1071)
+library(ROCR)
+library(gplots)
+library(pROC)
+library(ggpubr)
+```
+
+
+# Load the dataset
+
+```{r, message=FALSE, warning=FALSE}
+library(readxl)
+churn <- read_excel("~/OneDrive - Università degli Studi di Milano/Corso Machine Learning/Course_2020_2021/Lab 2 - Classification/Telco-Customer-Churn.xlsx")
+str(churn)
+head(churn)
+```
+# Data preparation
+
+```{r}
+churn_clean <- churn[complete.cases(churn), ]
+churn_clean$Churn<-as.factor(churn_clean$Churn)
+churn_clean$SeniorCitizen <- as.factor(mapvalues(churn_clean$SeniorCitizen,
+                                          from=c("0","1"),
+                                          to=c("No", "Yes")))
+churn_clean$MultipleLines <- as.factor(mapvalues(churn_clean$MultipleLines, 
+                                           from=c("No phone service"),
+                                           to=c("No")))
+churn_clean$customerID <- NULL
+```
+
+# Data Description
+
+** Response variable**
+```{r}
+# Churn distribution
+p=ggplot(churn_clean, aes(x = Churn)) +
+  geom_bar(aes(fill = Churn)) +
+  geom_text(aes(y = ..count.. -200, 
+                label = paste0(round(prop.table(..count..),4) * 100, '%')), 
+            stat = 'count', 
+            position = position_dodge(.1), 
+            size = 3)
+p
+```
+
+**Demografical Variable**
+```{r}
+#Gender plot
+p1 <- ggplot(churn_clean, aes(x = gender)) +
+  geom_bar(aes(fill = Churn)) +
+  geom_text(aes(y = ..count.. -200, 
+                label = paste0(round(prop.table(..count..),4) * 100, '%')), 
+            stat = 'count', 
+            position = position_dodge(.1), 
+            size = 3)
+
+#Senior citizen plot
+p2 <- ggplot(churn_clean, aes(x = SeniorCitizen)) +
+  geom_bar(aes(fill = Churn)) +
+  geom_text(aes(y = ..count.. -200, 
+                label = paste0(round(prop.table(..count..),4) * 100, '%')), 
+            stat = 'count', 
+            position = position_dodge(.1), 
+            size = 3)
+
+#Partner plot
+p3 <- ggplot(churn_clean, aes(x = Partner)) +
+  geom_bar(aes(fill = Churn)) +
+  geom_text(aes(y = ..count.. -200, 
+                label = paste0(round(prop.table(..count..),4) * 100, '%')), 
+            stat = 'count', 
+            position = position_dodge(.1), 
+            size = 3)
+
+#Dependents plot
+p4 <- ggplot(churn_clean, aes(x = Dependents)) +
+  geom_bar(aes(fill = Churn)) +
+  geom_text(aes(y = ..count.. -200, 
+                label = paste0(round(prop.table(..count..),4) * 100, '%')), 
+            stat = 'count', 
+            position = position_dodge(.1), 
+            size = 3)
+
+#Plot demographic data within a grid
+grid.arrange(p1, p2, p3, p4, ncol=2)
+```
+
+**Some Categorical variables**
+```{r}
+#Contract status plot
+p14 <- ggplot(churn_clean, aes(x = Contract)) +
+  geom_bar(aes(fill = Churn)) +
+  geom_text(aes(y = ..count.. -200, 
+                label = paste0(round(prop.table(..count..),4) * 100, '%')), 
+            stat = 'count', 
+            position = position_dodge(.1), 
+            size = 3)
+
+#Paperless billing plot
+p15 <- ggplot(churn_clean, aes(x = PaperlessBilling)) +
+  geom_bar(aes(fill = Churn)) +
+  geom_text(aes(y = ..count.. -200, 
+                label = paste0(round(prop.table(..count..),4) * 100, '%')), 
+            stat = 'count', 
+            position = position_dodge(.1), 
+            size = 3)
+
+#Payment method plot
+p16 <- ggplot(churn_clean, aes(x = PaymentMethod)) +
+  geom_bar(aes(fill = Churn)) +
+  geom_text(aes(y = ..count.. -200, 
+                label = paste0(round(prop.table(..count..),4) * 100, '%')), 
+            stat = 'count', 
+            position = position_dodge(.1), 
+            size = 3)
+
+#Plot contract data within a grid
+grid.arrange(p14, p15, p16, ncol=1)
+```
+
+**Numerical Variables**
+```{r}
+#Tenure histogram
+p17 <- ggplot(data = churn_clean, aes(tenure, color = Churn))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+#Monthly charges histogram
+p18 <- ggplot(data = churn_clean, aes(MonthlyCharges, color = Churn))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+#Total charges histogram
+p19 <- ggplot(data = churn_clean, aes(TotalCharges, color = Churn))+
+  geom_freqpoly(binwidth = 200, size = 1)
+
+#Plot quantitative data within a grid
+grid.arrange(p17, p18, p19, ncol=1)
+```
+
+# Divide the dataset in training and test
+```{r}
+set.seed(123)
+split_train_test <- createDataPartition(churn_clean$Churn,p=0.7,list=FALSE)
+dtrain<- churn_clean[split_train_test,]
+dtest<-  churn_clean[-split_train_test,]
+```
+
+
+# Logistic regression
+
+```{r, message=FALSE, warning=FALSE}
+lr_fit <- glm(Churn ~., data = dtrain,
+          family=binomial(link='logit'))
+summary(lr_fit)
+```
+
+**Confusion Matrix**
+```{r}
+lr_prob1 <- predict(lr_fit, dtest, type="response")
+lr_pred1 <- ifelse(lr_prob1 > 0.5,"Yes","No")
+table(Predicted = lr_pred1, Actual = dtest$Churn)
+```
+
+**Accuracy**
+```{r}
+lr_prob2 <- predict(lr_fit, dtrain, type="response")
+lr_pred2 <- ifelse(lr_prob2 > 0.5,"Yes","No")
+lr_tab1 <- table(Predicted = lr_pred2, Actual = dtrain$Churn)
+lr_tab2 <- table(Predicted = lr_pred1, Actual = dtest$Churn)
+```
+
+
+```{r}
+# Train
+confusionMatrix(
+  as.factor(lr_pred2),
+  as.factor(dtrain$Churn),
+  positive = "Yes" 
+)
+```
+
+
+```{r}
+# Test
+confusionMatrix(
+as.factor(lr_pred1),
+  as.factor(dtest$Churn),
+  positive = "Yes" 
+)
+
+
+```
+
+# ROC Curve
+
+```{r, message=FALSE, warning=FALSE}
+library(pROC)
+lr_prob2 <- predict(lr_fit, dtest, type="response")
+test_roc = roc(dtest$Churn ~ lr_prob2, plot = TRUE, print.auc = TRUE)
+as.numeric(test_roc$auc)
+```
+
+
+# Relation with tenure 
+
+```{r}
+p23 <- ggplot(churn_clean, aes(x = tenure, fill = Churn)) +
+  geom_histogram(binwidth = 1) +
+  labs(x = "Months",
+       title = "Churn rate by tenure")
+p23
+```
+
+# Relation with Total Charges
+```{r}
+p24 <- ggplot(churn_clean, aes(x = TotalCharges, fill = Churn)) +
+  geom_histogram(binwidth = 100) +
+  labs(x = "Dollars (binwidth=100)",
+       title = "Churn rate by Total Charges")
+p24
+```
+
+
+# Linear Discriminant Analysis
+```{r}
+library(MASS)
+lda.fit=lda(Churn~.,data = dtrain)
+lda.fit
+plot(lda.fit)
+lda.pred=predict(lda.fit,dtest)$class
+table(lda.pred,dtest$Churn)
+mean(lda.pred==dtest$Churn)
+```
+
+
+
+
